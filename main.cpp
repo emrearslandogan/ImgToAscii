@@ -16,7 +16,9 @@ using namespace std;
 
 class ToAscii {
     private:
-        const string palette = "@%#*+=-:. "; // TODO, have new palettes
+        //const string palette = "@%#*+=-:. "; // TODO, have new palettes
+        //const string palette = "@%#*+=-:~. "; // Uses block elements for better coverage";
+        const string palette = " .~:-=+*#&@";
         vector <unsigned char> image_data;
         int width = 0, height = 0;
         string filename;
@@ -125,7 +127,14 @@ class ToAscii {
 
         }
 
-        bool save_image_as_ascii() {
+        void save_image_as_textf() {
+            img_to_ascii(palette);
+            ofstream out_file("ascii/" + filename);
+            for (int i = 0; i < width * height; i++) {
+                out_file << ascii_form[i];
+                if (i % width == width - 1) out_file << endl;
+            }
+            out_file.close();
 
         }
         // some helper functions
@@ -138,6 +147,7 @@ class ToAscii {
         // +final: symbolizer
         // extra: resizing images, without the need for common factors.
         // extra: batch processing for multiple image files
+        // extra: art is stretched because characters are not square. How to fix? Need to reduce (shrink) the image beforehand.
         // extra2: video processing, recorded video
         // extra3: video processing, live
         // extra4: multithreading or gpu usage? maybe?
@@ -147,7 +157,7 @@ class ToAscii {
 
 int main(){
     ToAscii engine;
-    string name = "test/DSC06880.JPG";
+    string name = "test/20250821_193731.jpg";
     int width, height, channels;
     width = 3376; height = 6000; channels = 3;
 
@@ -155,7 +165,8 @@ int main(){
     engine.load_image(name, width, height, channels);
     // image_data is now stored inside the engine object    /*cout << engine.save_image_as_png(out_name, image_data, width, height);
 
-    engine.resize_image(16);
+    engine.resize_image(10);
     cout << engine.save_image_as_png() << endl;
+    engine.save_image_as_textf();
     return 0;
 }
