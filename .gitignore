@@ -2,3 +2,4 @@ cmake-build-debug/
 test/
 out/
 ascii_converter
+ascii/
