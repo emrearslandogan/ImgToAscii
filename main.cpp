@@ -5,9 +5,7 @@
 #include "stb_image.h" // the main library for us to read image
 #include "stb_image_write.h"
 #include <libexif/exif-data.h>
-#include <libexif/exif-content.h>
-#include <libexif/exif-tag.h>
-#include <libexif/exif-entry.h>
+#include <filesystem>
 #include <string>
 #include <vector>
 #include <cmath>
@@ -17,12 +15,12 @@
 #define GRAYSCALE 1
 
 using namespace std;
+namespace fs = std::filesystem;
 
 class ToAscii {
     private:
-        //const string palette = "@%#*+=-:. "; // TODO, have new palettes
-        //const string palette = "@%#*+=-:~. "; // Uses block elements for better coverage";
-        const string palette = " .~:-=+*#&@";
+        //const string palette = "@%#*+=-:~. ";
+        const string palette = " .~:-=+*#&@";   // Great for black background terminal
 
         vector <unsigned char> image_data;
         int width = 0, height = 0;
@@ -52,6 +50,11 @@ class ToAscii {
             return factors;
         }
 
+        int get_index(int row, int col) {
+            return row * width + col;
+        }
+
+        // Functions regarding orientation problem
         void rotate90CW() { 
             vector<unsigned char> rotated(width * height);
             for (int r = 0; r < height; r++)
@@ -75,32 +78,23 @@ class ToAscii {
             vector<unsigned char> rotated(width * height);
             for (int r = 0; r < height; r++)
                 for (int c = 0; c < width; c++)
-                    // map (r,c) → (width-1-c, r)
                     rotated[(width - 1 - c) * height + r] = image_data[r * width + c];
 
             image_data.swap(rotated);
-            swap(width, height); // just like CW rotation
-        }
-
-
-        int get_index(int row, int col) {
-            return row * width + col;
+            swap(width, height);
         }
 
         int get_exif_orientation(const char* img_path) {
-            cout << "image path " << img_path << endl;
             ExifData* exifData = exif_data_new_from_file(img_path);
-            if (!exifData) {
+            if (!exifData) 
                 return 0; // No EXIF data found
-            }
             
             int orientation = -1;
             ExifByteOrder byteOrder = exif_data_get_byte_order(exifData);
             ExifEntry* entry = exif_data_get_entry(exifData, EXIF_TAG_ORIENTATION);
             
-            if (entry) {
+            if (entry) 
                 orientation = exif_get_short(entry->data, byteOrder);
-            }
             
             exif_data_free(exifData);
             return orientation;
@@ -108,7 +102,6 @@ class ToAscii {
 
         void fix_orientation(const char* img_path) {
             int orientation = get_exif_orientation(img_path);
-            cout << "needen orientation" << endl;
             switch(orientation){
                 case 1: // normal
                     break;
@@ -127,9 +120,9 @@ class ToAscii {
 
         }
 
-    public:
-        void load_image(const string& img_filename, int &img_width, int &img_height, int &channels, int desired_channel = GRAYSCALE){
-            unsigned char* data = stbi_load(img_filename.c_str(), &img_width, &img_height, &channels, desired_channel);
+        // MAIN FUNCTIONS
+        void load_image(const string& img_path, int &img_width, int &img_height, int &channels, int desired_channel = GRAYSCALE){
+            unsigned char* data = stbi_load(img_path.c_str(), &img_width, &img_height, &channels, desired_channel);
             width = img_width;
             height = img_height;
 
@@ -138,24 +131,21 @@ class ToAscii {
             size_t image_size = width * height * GRAYSCALE;
             image_data.assign(data, data + image_size);
 
-            int orientation = get_exif_orientation(img_filename.c_str());
-            cout << "orientation: " << orientation << endl;
+            int orientation = get_exif_orientation(img_path.c_str());
             if (orientation == 3 || orientation == 6 || orientation == 8)
-                fix_orientation(img_filename.c_str());
+                fix_orientation(img_path.c_str());
 
-            // assign filename except first 5 and last 4 chars
-            if (img_filename.size() > 9)// avoid out of range
-                filename = img_filename.substr(5, img_filename.size() - 5 - 4);
+            // assign filename except first 5 and last 4 chars, for test/ and .jpg
+            if (img_path.size() > 9)// avoid out of range
+                filename = img_path.substr(5, img_path.size() - 5 - 4);
             else
-                filename = img_filename; // fallback
-
+                filename = img_path; // fallback
 
             stbi_image_free(data);
         }
 
         bool save_image_as_png() {
             string return_name = "out/" + filename + ".png";
-            cout << return_name << endl;
             return stbi_write_png(return_name.c_str(), width, height, 1, image_data.data(), width) != 0;
         }
 
@@ -168,17 +158,15 @@ class ToAscii {
             else divisor = possible_divisors[resize_factor];
 
             // at this point, we know the divisor. Need to group ant take the average value.
-
             vector<unsigned char> resized_image_data(image_data.size() / (divisor*divisor));
             int index = 0;
 
             for (int row_p = 0; row_p < height; row_p = row_p + divisor)
                 for (int col_p = 0; col_p < width; col_p = col_p + divisor) {  // we use 2d addressing on a 1d array. Moving the pointer
-
                     int sum = 0;
                     for (int i = 0; i < divisor; i++)
                         for (int j = 0; j < divisor; j++)
-                            sum += image_data[get_index(row_p+i, col_p+j)];
+                            sum += image_data[(row_p+i)*width + (col_p+j)];
 
                     unsigned char avg = sum / (divisor*divisor);
                     resized_image_data[index++] = avg;
@@ -222,14 +210,12 @@ class ToAscii {
             height = new_height;
         }
 
-
         void img_to_ascii(string ascii_palette) {
             double multiplier = 256 / ascii_palette.size();
             ascii_form.resize(width * height);
 
             for (int i = 0; i < image_data.size(); i++)
                 ascii_form[i] = ascii_palette[round(image_data[i] / multiplier)];
-
         }
 
         void save_image_as_textf() {
@@ -242,34 +228,44 @@ class ToAscii {
             out_file.close();
 
         }
-        // some helper functions
-        // +helper: loading image
-        // +helper: to grayscale, loaded like this
-        // +helper: saving images
-        // +helper: common factor
-        // +helper: resizing images, with common factors
-        // +helper: to characterize, according to specific resolution for the ascii image
-        // +final: symbolizer
-        // +extra: resizing images, without the need for common factors.
-        // extra: batch processing for multiple image files
-        // extra: art is stretched because characters are not square. How to fix? Need to reduce (shrink) the image beforehand.
-        // extra2: video processing, recorded video
-        // extra3: video processing, live
-        // extra4: multithreading or gpu usage? maybe?
 
+    public:
+        // orientation so we pick resizing ratio
+        void ascii_pipeline(string img_path){
+            int width, height, channels;
+            load_image(img_path, width, height, channels);
+
+            if (height > width)
+                resize_image_nearest(0.05, 0.017);   // FOR VERTICAL
+            else
+                resize_image_nearest(0.05, 0.024);   // FOR HORIZONTAL
+            
+            save_image_as_png();
+            save_image_as_textf();
+            cout << "Created file: " << filename << endl;;
+        }
+
+        void batch_ascii(string folder_path){
+            cout << "Scanning the folder: " << folder_path << endl; 
+            std::vector<std::string> files;
+                for (const auto& entry : fs::directory_iterator(folder_path)) 
+                    if (entry.is_regular_file()) 
+                        files.push_back(entry.path().string());  
+        
+            for (int i = 0; i < files.size(); i++)
+                ascii_pipeline(files[i]); 
+        }
 };
 
-
-int main(){
+int main(int argc, char* argv[]){
     ToAscii engine;
-    string name = "test/20250703_112425.JPG";
-    int width, height, channels;
 
-    engine.load_image(name, width, height, channels);
-    // image_data is now stored inside the engine object    /*cout << engine.save_image_as_png(out_name, image_data, width, height);
+    string p(argv[1]);
+    if (fs::is_directory(p))  // if it has last character /, directory
+        engine.batch_ascii(p);
+    
+    else if (fs::is_regular_file(p))
+        engine.ascii_pipeline(p);
 
-    engine.resize_image_nearest(0.05, 0.017);
-    cout << engine.save_image_as_png() << endl;
-    engine.save_image_as_textf();
     return 0;
 }
